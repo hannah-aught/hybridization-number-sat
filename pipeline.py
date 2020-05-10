@@ -172,18 +172,24 @@ def gen_x_conditions(n, m, total_edges, last_f_var, f_vars):
 
     #last_x_var = x_vars[-1]
 
-    return x_condition, last_x_var, x_vars
+    return [x_condition], last_x_var, x_vars
 
 def gen_d_conditions(n, m, total_edges, last_x_var, x_vars):
-    d_condition = Condition(list(), False)
+    d_condition_1 = Condition(list(), False)
+    d_condition_2 = Condition(list(), False)
     d_vars = list(range(last_x_var + 1, last_x_var + total_edges + 1))
 
     for i, x_var in enumerate(x_vars):
         for k in range(m):
-            d_condition.add_clause([-1*(k*total_edges + x_var), d_vars[i]])
-        d_condition.add_clause([x_vars[i] + x*total_edges for x in range(m)] + [-1*d_vars[i]])
+            d_condition_1.add_clause([-1*(k*total_edges + x_var), d_vars[i]])
+        d_condition_1.add_clause([x_vars[i] + x*total_edges for x in range(m)] + [-1*d_vars[i]])
+    
+    for i in range(len(d_vars)-2):
+        for j in range(i + 1, len(d_vars)-1):
+            for k in range(j + 1, len(d_vars)):
+                d_condition_2.add_clause([-d_vars[i], -d_vars[j], -d_vars[k]])
 
-    return d_condition, d_vars[-1]
+    return [d_condition_1, d_condition_2], d_vars[-1]
 
 def gen_tree_conditions(n, m):
     # Have adjacency mat for edges?
@@ -199,7 +205,7 @@ def gen_tree_conditions(n, m):
     x_conditions, final_x_var, x_vars = gen_x_conditions(n, m, total_edges, final_f_var, f_vars) # Condition for edges being included in a commodity tree
     d_conditions, final_d_var = gen_d_conditions(n, m, total_edges, final_x_var, x_vars) # Condition for edges being included in the DAG
 
-    conditions = i_conditions + t_conditions + f_conditions + [x_conditions] + [d_conditions]
+    conditions = i_conditions + t_conditions + f_conditions + x_conditions + d_conditions
     return conditions, final_t_var, final_d_var
 
 def get_permutations(i, dnf_vars, ct_var, sequence, sequences):
@@ -556,9 +562,9 @@ def main(argv):
                     s += "\n"
                 temp.write(s)
 
-            dp_results = minimize_dp("./input/temp")
+            #dp_results = minimize_dp("./input/temp")
 
-            print_results([sat_results, dp_results], input_name)
+            print_results([sat_results], input_name)
 
             i += 1
 
@@ -566,4 +572,4 @@ def main(argv):
     
     return
 
-main(["pipeline.py", "-o", "test_output", "-s", "glucose-syrup", "data5"])
+main(["pipeline.py", "-o", "test_output", "-s", "glucose-syrup", "test4"])

@@ -184,10 +184,38 @@ def gen_d_conditions(n, m, total_edges, last_x_var, x_vars):
             d_condition_1.add_clause([-1*(k*total_edges + x_var), d_vars[i]])
         d_condition_1.add_clause([x_vars[i] + x*total_edges for x in range(m)] + [-1*d_vars[i]])
     
-    for i in range(len(d_vars)-2):
-        for j in range(i + 1, len(d_vars)-1):
-            for k in range(j + 1, len(d_vars)):
-                d_condition_2.add_clause([-d_vars[i], -d_vars[j], -d_vars[k]])
+    for j in range(3, 2*n+m+1):
+        d_i_vars = d_vars
+
+        for i in range(min(n+m-1,j-2)):
+            if i == 0 and j > n + m:
+                d_i_vars = d_i_vars[n+m:]
+                continue
+
+            d_ij = d_i_vars[j - i - 1]
+
+            if i == 0:
+                d_h_vars = d_i_vars[n+m:]
+            else:
+                d_h_vars = d_i_vars[2*n+m-i:]
+
+            for h in range(i+1, min(n+m,j-1)):
+
+                d_hj = d_h_vars[j - h - 1]
+                d_g_vars = d_h_vars[2*n+m-h:]                
+
+                for g in range(h+1, min(n+m+1, j)):
+                    
+                    d_gj = d_g_vars[j - g - 1]
+                    d_condition_2.add_clause([-d_ij, -d_hj, -d_gj])
+                    d_g_vars = d_g_vars[2*n+m-g:]
+                
+                d_h_vars = d_h_vars[2*n+m-h:]
+            
+            if i == 0:
+                d_i_vars = d_i_vars[n+m:]
+            else:
+                d_i_vars = d_i_vars[2*n+m-i:]
 
     return [d_condition_1, d_condition_2], d_vars[-1]
 
@@ -572,4 +600,4 @@ def main(argv):
     
     return
 
-main(["pipeline.py", "-o", "test_output", "-s", "glucose-syrup", "test4"])
+main(["pipeline.py", "-o", "test_output", "-s", "glucose-syrup", "test10x10"])

@@ -181,7 +181,6 @@ def gen_x_conditions(n, m, total_edges, last_f_var, f_vars):
 
 def gen_d_conditions(n, m, total_edges, last_x_var, x_vars):
     d_condition_1 = Condition(list(), False)
-    d_condition_2 = Condition(list(), False)
     d_vars = list(range(last_x_var + 1, last_x_var + total_edges + 1))
     print("d vars start at:", d_vars[0])
 
@@ -189,41 +188,8 @@ def gen_d_conditions(n, m, total_edges, last_x_var, x_vars):
         for k in range(m):
             d_condition_1.add_clause([-1*(k*total_edges + x_var), d_vars[i]])
         d_condition_1.add_clause([x_vars[i] + x*total_edges for x in range(m)] + [-1*d_vars[i]])
-    
-    for j in range(3, 2*n+m+1):
-        d_i_vars = d_vars
 
-        for i in range(min(n+m-1,j-2)):
-            if i == 0 and j > n + m:
-                d_i_vars = d_i_vars[n+m:]
-                continue
-
-            d_ij = d_i_vars[j - i - 1]
-
-            if i == 0:
-                d_h_vars = d_i_vars[n+m:]
-            else:
-                d_h_vars = d_i_vars[2*n+m-i:]
-
-            for h in range(i+1, min(n+m,j-1)):
-
-                d_hj = d_h_vars[j - h - 1]
-                d_g_vars = d_h_vars[2*n+m-h:]                
-
-                for g in range(h+1, min(n+m+1, j)):
-                    
-                    d_gj = d_g_vars[j - g - 1]
-                    d_condition_2.add_clause([-d_ij, -d_hj, -d_gj])
-                    d_g_vars = d_g_vars[2*n+m-g:]
-                
-                d_h_vars = d_h_vars[2*n+m-h:]
-            
-            if i == 0:
-                d_i_vars = d_i_vars[n+m:]
-            else:
-                d_i_vars = d_i_vars[2*n+m-i:]
-
-    return [d_condition_1, d_condition_2], d_vars[-1]
+    return [d_condition_1], d_vars[-1]
 
 def gen_tree_conditions(n, m):
     # Have adjacency mat for edges?
@@ -365,7 +331,7 @@ def gen_subtree_conditions(input, n, m, num_edges, final_node_var, final_edge_va
 
     return rct_conditions + z_conditions + ct_conditions, final_ct_var
 
-def gen_reticulation_conditions(n, m, num_edges, final_d_var, final_ct_var):
+'''def gen_reticulation_conditions(n, m, num_edges, final_d_var, final_ct_var):
     r_vars = [x for x in range(final_ct_var +  1, final_ct_var + 2*n + m + 1)] # r variables for all internal and leaf nodes but not the root bc it's a source
     leaf_r_vars = r_vars[-n:]
     d_vars = [x for x in range(final_d_var - num_edges + 1, final_d_var + 1)]
@@ -423,14 +389,58 @@ def gen_reticulation_conditions(n, m, num_edges, final_d_var, final_ct_var):
         r_condition.add_clause([-leaf])
 
     return [r_condition], final_r_var
+'''
+
+def gen_n_conditions(num_internal_nodes, first_t_var, final_t_var, final_d_var):
+    t_vars = [t for t in range(first_t_var, final_t_var + 1)]
+    n_vars = [n for n in range(final_d_var + 1, final_d_var + (num_internal_nodes + 1)**2 + 1)]
+    n_condition = Condition()
+    num_n_vars = len(n_vars)
+
+    for k in range(num_internal_nodes + 1):
+        for i in range(num_n_vars):
+            current_n_var_index = k*(num_n_vars + 1) + i
+
+            n_condition.add_clause([-n_vars[current_n_var_index], n_vars[current_n_var_index + 1]])
+
+            if k < num_internal_nodes + 1:
+                n_condition.add_clause([-n_vars[current_n_var_index], -t_vars[i], n_vars[current_n_var_index + len(t_vars) + 2]])
+                # sympy_clauses = sympy_clauses & Implies(c_vars[current_c_var_index] & r_vars[i], c_vars[(k+1)*(m+n+1) + i + 1])
+            if k == 0:
+                n_condition.add_clause([-t_vars[i], n_vars[current_n_var_index + 1]])
+                # sympy_clauses = sympy_clauses & Implies(r_vars[i], c_vars[current_c_var_index + 1])
 
 
-def gen_counting_conditions(n, m, goal_count, final_r_var):
-    r_vars = [r for r in range(final_r_var - (m+2*n - 1), final_r_var + 1)]
-    c_vars = [c for c in range(final_r_var + 1, final_r_var + (len(r_vars) + 1)*(goal_count + 1) + 1)]
-    c_condition = Condition(list(), False)
-    num_r_vars = len(r_vars)
-    num_c_vars = len(c_vars)
+    return [n_condition], n_vars
+
+def gen_e_conditions(num_internal_nodes, max_edge_count, first_d_var, final_d_var, final_n_var):
+    d_vars = [d for d in range(first_d_var, final_d_var + 1)]
+    e_vars = [e for e in range(final_n_var + 1, final_n_var + (max_edge_count + 1)**2 + 1)]
+    num_e_vars = len(e_vars)
+    e_condition = Condition()
+
+    '''for k in range(max_edge_count + 1):
+        for j in range(num_e_vars):
+            for i in range(j):'''
+                
+
+    return [e_condition], e_vars
+
+def gen_h_conditions(num_internal_nodes, max_edge_count, goal_count, n_vars, e_vars):
+    h_vars = [h for h in range(e_vars[-1] + 1, e_vars[-1] + (max_edge_count - num_internal_nodes + 1)*(goal_count + 1) + 1)]
+    h_condition_1 = Condition()
+    h_condition_2 = Condition()
+
+    return [h_condition_1, h_condition_2], h_vars[-1]
+
+def gen_counting_conditions(num_rows, num_cols, goal_count, first_t_var, final_t_var, first_d_var, final_d_var):
+    num_internal_nodes = num_rows + num_cols
+    max_edge_count = num_internal_nodes * (num_internal_nodes - 1) // 2
+    n_conditions, n_vars = gen_n_conditions(num_internal_nodes, first_t_var, final_t_var, final_d_var)
+    e_conditions, e_vars = gen_e_conditions(num_internal_nodes, max_edge_count, first_d_var, final_d_var, n_vars[-1])
+    h_conditions, final_h_var = gen_h_conditions(num_internal_nodes, max_edge_count, goal_count, n_vars, e_vars)
+
+    return [n_conditions, e_conditions, h_conditions], final_h_var
 
     for k in range(goal_count + 1):
         for i in range(num_r_vars):
@@ -605,4 +615,4 @@ def main(argv):
     
     return
 
-main(["pipeline.py", "-o", "test_output", "-s", "glucose-syrup", "test5x7"])
+main(["pipeline.py", "-o", "test_output", "-s", "glucose-syrup", "test5x7", "test5x10", "test5x12", "test12x10"])

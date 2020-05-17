@@ -391,74 +391,81 @@ def gen_subtree_conditions(input, n, m, num_edges, final_node_var, final_edge_va
     return [r_condition], final_r_var
 '''
 
-def gen_n_conditions(num_internal_nodes, first_t_var, final_t_var, final_d_var):
-    t_vars = [t for t in range(first_t_var, final_t_var + 1)]
-    n_vars = [n for n in range(final_d_var + 1, final_d_var + (num_internal_nodes + 1)**2 + 1)]
-    n_condition = Condition()
+def gen_n_conditions(num_internal_nodes, first_t_var, final_ct_var):
+    t_vars = [t for t in range(first_t_var + 1, first_t_var + num_internal_nodes + 1)] # internal nodes only
+    n_vars = [n for n in range(final_ct_var + 1, final_ct_var + (num_internal_nodes)*(num_internal_nodes + 1) + 1)]
+    n_condition = Condition(list(), False)
     num_n_vars = len(n_vars)
 
-    for k in range(num_internal_nodes + 1):
-        for i in range(num_n_vars):
-            current_n_var_index = k*(num_n_vars + 1) + i
+    for k in range(num_internal_nodes):
+        for i in range(num_internal_nodes):
+            current_n_var_index = k*(num_internal_nodes + 1) + i
 
             n_condition.add_clause([-n_vars[current_n_var_index], n_vars[current_n_var_index + 1]])
 
-            if k < num_internal_nodes + 1:
-                n_condition.add_clause([-n_vars[current_n_var_index], -t_vars[i], n_vars[current_n_var_index + len(t_vars) + 2]])
+            if k < num_internal_nodes - 1:
+                n_condition.add_clause([-n_vars[current_n_var_index], -t_vars[i], n_vars[current_n_var_index + num_internal_nodes + 2]])
                 # sympy_clauses = sympy_clauses & Implies(c_vars[current_c_var_index] & r_vars[i], c_vars[(k+1)*(m+n+1) + i + 1])
             if k == 0:
                 n_condition.add_clause([-t_vars[i], n_vars[current_n_var_index + 1]])
                 # sympy_clauses = sympy_clauses & Implies(r_vars[i], c_vars[current_c_var_index + 1])
 
-
     return [n_condition], n_vars
 
-def gen_e_conditions(num_internal_nodes, max_edge_count, first_d_var, final_d_var, final_n_var):
+def gen_e_conditions(num_rows, num_internal_nodes, max_edge_count, first_d_var, final_d_var, final_n_var):
     d_vars = [d for d in range(first_d_var, final_d_var + 1)]
-    e_vars = [e for e in range(final_n_var + 1, final_n_var + (max_edge_count + 1)**2 + 1)]
+    e_vars = [e for e in range(final_n_var + 1, final_n_var + (num_internal_nodes + 1)*(max_edge_count) + 1)]
     num_e_vars = len(e_vars)
-    e_condition = Condition()
+    e_condition = Condition(list(), False)
 
-    '''for k in range(max_edge_count + 1):
-        for j in range(num_e_vars):
-            for i in range(j):'''
-                
+    for k in range(max_edge_count):
+        for j in range(num_internal_nodes):
+            current_e_var_index = k*(num_internal_nodes + 1) + j
+            d_i_vars = d_vars
+            e_condition.add_clause([-e_vars[current_e_var_index], e_vars[current_e_var_index + 1]])
+
+            for i in range(j + 1):
+                d_ij = d_i_vars[j - i]
+
+                if k == max_edge_count - 1:
+                    break
+                else:
+                    e_condition.add_clause([-e_vars[current_e_var_index], -d_ij, e_vars[current_e_var_index + num_internal_nodes + 2]])
+
+                if k == 0:
+                    e_condition.add_clause([-d_ij, e_vars[current_e_var_index + 1]])
+                    
+                if i == 0:
+                    d_i_vars = d_i_vars[num_internal_nodes - i:]
+                else:
+                    d_i_vars = d_i_vars[num_internal_nodes - i + num_rows:]
 
     return [e_condition], e_vars
 
 def gen_h_conditions(num_internal_nodes, max_edge_count, goal_count, n_vars, e_vars):
-    h_vars = [h for h in range(e_vars[-1] + 1, e_vars[-1] + (max_edge_count - num_internal_nodes + 1)*(goal_count + 1) + 1)]
-    h_condition_1 = Condition()
-    h_condition_2 = Condition()
+    h_vars = [h for h in range(e_vars[-1] + 1, e_vars[-1] + (num_internal_nodes + 1)*(goal_count + 1) + 1)]
+    h_condition = Condition()
 
-    return [h_condition_1, h_condition_2], h_vars[-1]
+    for k in range(1, goal_count + 2):
+        for j in range(num_internal_nodes):
+            current_h_var_index = (k-1)*(num_internal_nodes + 1) + j
 
-def gen_counting_conditions(num_rows, num_cols, goal_count, first_t_var, final_t_var, first_d_var, final_d_var):
-    num_internal_nodes = num_rows + num_cols
-    max_edge_count = num_internal_nodes * (num_internal_nodes - 1) // 2
-    n_conditions, n_vars = gen_n_conditions(num_internal_nodes, first_t_var, final_t_var, final_d_var)
-    e_conditions, e_vars = gen_e_conditions(num_internal_nodes, max_edge_count, first_d_var, final_d_var, n_vars[-1])
-    h_conditions, final_h_var = gen_h_conditions(num_internal_nodes, max_edge_count, goal_count, n_vars, e_vars)
+            h_condition.add_clause([h_vars[current_h_var_index], h_vars[current_h_var_index + 1]])
 
-    return [n_conditions, e_conditions, h_conditions], final_h_var
+            for b in range(1, num_internal_nodes + 1):
+                a = k + b
 
-    for k in range(goal_count + 1):
-        for i in range(num_r_vars):
-            current_c_var_index = k*(num_r_vars + 1) + i
-            c_condition.add_clause([-c_vars[current_c_var_index], c_vars[current_c_var_index + 1]])
+                if a > max_edge_count:
+                    break
 
-            if k < goal_count:
-                c_condition.add_clause([-c_vars[current_c_var_index], -r_vars[i], c_vars[current_c_var_index + num_r_vars + 2]])
-                # sympy_clauses = sympy_clauses & Implies(c_vars[current_c_var_index] & r_vars[i], c_vars[(k+1)*(m+n+1) + i + 1])
-            if k == 0:
-                c_condition.add_clause([-r_vars[i], c_vars[current_c_var_index + 1]])
-                # sympy_clauses = sympy_clauses & Implies(r_vars[i], c_vars[current_c_var_index + 1])
+                e_ja = e_vars[(a-1)*(num_internal_nodes + 1) + j]
+                n_jb = n_vars[(b-1)*(num_internal_nodes + 1) + j]
 
-    final_c_var = c_vars[-1]
+                h_condition.add_clause([h_vars[current_h_var_index], -e_ja, n_jb])
 
-    c_condition.add_clause([-1*final_c_var])
+    h_condition.add_clause([-h_vars[-1]])
 
-    return [c_condition], final_c_var
+    return [h_condition], h_vars[-1]
 
 
 def write_cnf_file(conditions, num_vars, num_clauses, cnf_file_path):
@@ -500,14 +507,16 @@ def call_solver(solver_path, cnf_file_path):
 
     return total_time, sat
 
-def minimize_sat(conditions, var_offset, num_rows, num_cols, solver, cnf_file_path):
-    bound = num_rows + num_cols
+def minimize_sat(conditions, n_vars, e_vars, num_rows, num_cols, solver, cnf_file_path):
+    num_internal_nodes = num_cols + num_rows
+    max_edges = num_internal_nodes + num_internal_nodes*(num_internal_nodes - 1)//2
+    bound = max_edges - num_internal_nodes
     total_time = 0
     runs_required = 0
     sat = True
 
     num_clauses = get_num_clauses(conditions)
-    write_cnf_file(conditions, var_offset, num_clauses, "temp")
+    write_cnf_file(conditions, e_vars[-1], num_clauses, "temp")
 
     if (solver == Solver.GLUCOSE_SYRUP):
         solver_path = "./glucose-syrup/parallel/glucose-syrup"
@@ -515,9 +524,9 @@ def minimize_sat(conditions, var_offset, num_rows, num_cols, solver, cnf_file_pa
         solver_path = "./lingeling/plingeling"
 
     while sat and bound >= 0:
-        counting_conditions, final_c_var = gen_counting_conditions(num_rows, num_cols, bound, var_offset)
+        counting_conditions, final_h_var = gen_h_conditions(num_rows + num_cols, max_edges, bound, n_vars, e_vars)
         num_counting_clauses = get_num_clauses(counting_conditions)
-        append_to_cnf_file(counting_conditions, final_c_var, num_clauses + num_counting_clauses, cnf_file_path)
+        append_to_cnf_file(counting_conditions, final_h_var, num_clauses + num_counting_clauses, cnf_file_path)
         time, sat = call_solver(solver_path, cnf_file_path)
         runs_required += 1
         total_time += time
@@ -592,11 +601,12 @@ def main(argv):
 
             tree_conditions, final_node_var, final_edge_var = gen_tree_conditions(n, m)
             subtree_conditions, final_ct_var = gen_subtree_conditions(mat, n, m, num_edges, final_node_var, final_edge_var)
-            reticulation_conditions, final_r_var = gen_reticulation_conditions(n, m, num_edges, final_edge_var, final_ct_var)
-            conditions = tree_conditions + subtree_conditions + reticulation_conditions
+            n_conditions, n_vars = gen_n_conditions(n+m, final_node_var - (2*n+m), final_ct_var)
+            e_conditions, e_vars = gen_e_conditions(n, n+m, num_edges - (n+m)*n, final_edge_var - num_edges + 1, final_edge_var, n_vars[-1])
+            conditions = tree_conditions + subtree_conditions + n_conditions + e_conditions
             input_name = in_file + "_" + str(i)
 
-            sat_results = minimize_sat(conditions, final_r_var, n, m, solver, input_name + ".cnf")
+            sat_results = minimize_sat(conditions, n_vars, e_vars, n, m, solver, input_name + ".cnf")
             with open("./input/temp", "w+") as temp:
                 s = ""
                 for row in mat:
@@ -605,14 +615,10 @@ def main(argv):
                     s += "\n"
                 temp.write(s)
 
-            #dp_results = minimize_dp("./input/temp")
-
             print_results([sat_results], input_name)
 
-            i += 1
-
-            
+            i += 1       
     
     return
 
-main(["pipeline.py", "-o", "test_output", "-s", "glucose-syrup", "test5x7", "test5x10", "test5x12", "test12x10"])
+main(["pipeline.py", "-o", "test_output", "-s", "glucose-syrup", "test"])

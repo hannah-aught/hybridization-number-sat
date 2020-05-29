@@ -181,6 +181,7 @@ def gen_x_conditions(n, m, total_edges, last_f_var, f_vars):
 
 def gen_d_conditions(n, m, total_edges, last_x_var, x_vars):
     d_condition_1 = Condition(list(), False)
+    d_condition_2 = Condition(list(), False)
     d_vars = list(range(last_x_var + 1, last_x_var + total_edges + 1))
     print("d vars start at:", d_vars[0])
 
@@ -189,7 +190,28 @@ def gen_d_conditions(n, m, total_edges, last_x_var, x_vars):
             d_condition_1.add_clause([-1*(k*total_edges + x_var), d_vars[i]])
         d_condition_1.add_clause([x_vars[i] + x*total_edges for x in range(m)] + [-1*d_vars[i]])
 
-    return [d_condition_1], d_vars[-1]
+    
+    internal_d_vars = d_vars[n + m:]
+
+    for i in range(n):
+        current_d_vars = internal_d_vars
+        
+        for j in range(n + m - 1):
+            dk_vars = current_d_vars
+            j_leaf_index = n + m - (j + 1) + i
+            d_ij = current_d_vars[j_leaf_index]
+            k_leaf_index = j_leaf_index + (n + m - j + 1)
+
+            for k in range(j + 1, n + m):
+                dk_vars = dk_vars[n + m - (k + 1) + n + 1:]
+                k_leaf_index = n + m - (k + 1) + i
+                d_ik = dk_vars[k_leaf_index]
+            
+                d_condition_2.add_clause([-d_ij, -d_ik])
+            
+            current_d_vars = current_d_vars[n + m - (j + 1) + n:]
+
+    return [d_condition_1, d_condition_2], d_vars[-1]
 
 def gen_tree_conditions(n, m):
     # Have adjacency mat for edges?
@@ -203,6 +225,8 @@ def gen_tree_conditions(n, m):
     t_conditions, final_t_var = gen_t_conditions(n, m, total_nodes, final_i_var) # Conditions for each node being included in a commodity tree
     f_conditions, final_f_var, f_vars = gen_f_conditions(n, m, total_edges, final_t_var) # Conditions for each edge being included in a commodity tree going to a specific leaf
     x_conditions, final_x_var, x_vars = gen_x_conditions(n, m, total_edges, final_f_var, f_vars) # Condition for edges being included in a commodity tree
+    
+    # TODO: Add condition that leaves can't be reticulation nodes using the d vars (since we got rid of the r variables)
     d_conditions, final_d_var = gen_d_conditions(n, m, total_edges, final_x_var, x_vars) # Condition for edges being included in the DAG
 
     conditions = i_conditions + t_conditions + f_conditions + x_conditions + d_conditions
@@ -444,13 +468,13 @@ def gen_e_conditions(num_rows, num_internal_nodes, max_edge_count, first_d_var, 
 
 def gen_h_conditions(num_internal_nodes, max_edge_count, goal_count, n_vars, e_vars):
     h_vars = [h for h in range(e_vars[-1] + 1, e_vars[-1] + (num_internal_nodes + 1)*(goal_count + 1) + 1)]
-    h_condition = Condition()
+    h_condition = Condition(list(), False)
 
-    for k in range(1, goal_count + 2):
+    for k in range(goal_count + 1):
         for j in range(num_internal_nodes):
-            current_h_var_index = (k-1)*(num_internal_nodes + 1) + j
+            current_h_var_index = k*(num_internal_nodes + 1) + j
 
-            h_condition.add_clause([h_vars[current_h_var_index], h_vars[current_h_var_index + 1]])
+            h_condition.add_clause([-h_vars[current_h_var_index], h_vars[current_h_var_index + 1]])
 
             for b in range(1, num_internal_nodes + 1):
                 a = k + b
@@ -510,7 +534,7 @@ def call_solver(solver_path, cnf_file_path):
 def minimize_sat(conditions, n_vars, e_vars, num_rows, num_cols, solver, cnf_file_path):
     num_internal_nodes = num_cols + num_rows
     max_edges = num_internal_nodes + num_internal_nodes*(num_internal_nodes - 1)//2
-    bound = max_edges - num_internal_nodes
+    bound = num_internal_nodes
     total_time = 0
     runs_required = 0
     sat = True
@@ -621,4 +645,4 @@ def main(argv):
     
     return
 
-main(["pipeline.py", "-o", "test_output", "-s", "glucose-syrup", "test"])
+main(["pipeline.py", "-o", "test_output", "-s", "glucose-syrup", "test1"])

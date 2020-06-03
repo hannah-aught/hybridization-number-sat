@@ -265,6 +265,8 @@ def gen_z_conditions(num_rows, num_cols, num_edges, total_nodes, final_edge_var,
     x_vars = [x for x in range(final_edge_var - (num_cols+1)*num_edges + 1, final_edge_var - num_edges + 1)]
     ct_vars = [c for c in range(final_z_var + 1, final_ct_var + 1)]
 
+    print("z vars start at: {}".format(z_vars[0]))
+
     z_condition = Condition(list(), False)
     clauses = list()
 
@@ -298,6 +300,8 @@ def gen_ct_conditions(input, num_rows, num_cols, num_edges, total_nodes, rct_var
     final_ct_var = final_z_var + num_cols * total_nodes
     ct_vars = [c for c in range(final_z_var + 1, final_ct_var + 1)]
     ct_condition = Condition(list(), False)
+
+    print("ct vars start at: {}".format(ct_vars[0]))
 
     for k in range(num_cols):
         ct_condition.add_clause([-ct_vars[k*total_nodes]])
@@ -415,24 +419,27 @@ def gen_subtree_conditions(input, n, m, num_edges, final_node_var, final_edge_va
     return [r_condition], final_r_var
 '''
 
-def gen_n_conditions(num_internal_nodes, first_t_var, final_ct_var):
-    t_vars = [t for t in range(first_t_var + 1, first_t_var + num_internal_nodes + 1)] # internal nodes only
+def gen_n_conditions(num_internal_nodes, num_cols, first_t_var, final_ct_var):
+    t_vars = [t for t in range(first_t_var + 1, first_t_var + num_cols*num_internal_nodes + 1)] # internal nodes only
     n_vars = [n for n in range(final_ct_var + 1, final_ct_var + (num_internal_nodes)*(num_internal_nodes + 1) + 1)]
     n_condition = Condition(list(), False)
     num_n_vars = len(n_vars)
+    
+    print("n vars start at: {}".format(n_vars[0]))
 
     for k in range(num_internal_nodes):
         for i in range(num_internal_nodes):
-            current_n_var_index = k*(num_internal_nodes + 1) + i
+            for j in range(num_cols):
+                current_n_var_index = k*(num_internal_nodes + 1) + i
+
+                if k < num_internal_nodes - 1:
+                    n_condition.add_clause([-n_vars[current_n_var_index], -t_vars[j*num_cols + i], n_vars[current_n_var_index + num_internal_nodes + 2]])
+                    # sympy_clauses = sympy_clauses & Implies(c_vars[current_c_var_index] & r_vars[i], c_vars[(k+1)*(m+n+1) + i + 1])
+                if k == 0:
+                    n_condition.add_clause([-t_vars[j*num_cols + i], n_vars[current_n_var_index + 1]])
+                    # sympy_clauses = sympy_clauses & Implies(r_vars[i], c_vars[current_c_var_index + 1])
 
             n_condition.add_clause([-n_vars[current_n_var_index], n_vars[current_n_var_index + 1]])
-
-            if k < num_internal_nodes - 1:
-                n_condition.add_clause([-n_vars[current_n_var_index], -t_vars[i], n_vars[current_n_var_index + num_internal_nodes + 2]])
-                # sympy_clauses = sympy_clauses & Implies(c_vars[current_c_var_index] & r_vars[i], c_vars[(k+1)*(m+n+1) + i + 1])
-            if k == 0:
-                n_condition.add_clause([-t_vars[i], n_vars[current_n_var_index + 1]])
-                # sympy_clauses = sympy_clauses & Implies(r_vars[i], c_vars[current_c_var_index + 1])
 
     return [n_condition], n_vars
 
@@ -441,6 +448,10 @@ def gen_e_conditions(num_rows, num_internal_nodes, max_edge_count, first_d_var, 
     e_vars = [e for e in range(final_n_var + 1, final_n_var + (num_internal_nodes + 1)*(max_edge_count) + 1)]
     num_e_vars = len(e_vars)
     e_condition = Condition(list(), False)
+
+    print("e vars start at: {}".format(e_vars[0]))
+    print("h vars start at: {}\n".format(e_vars[-1] + 1))
+
 
     for k in range(max_edge_count):
         for j in range(num_internal_nodes):
@@ -625,7 +636,7 @@ def main(argv):
 
             tree_conditions, final_node_var, final_edge_var = gen_tree_conditions(n, m)
             subtree_conditions, final_ct_var = gen_subtree_conditions(mat, n, m, num_edges, final_node_var, final_edge_var)
-            n_conditions, n_vars = gen_n_conditions(n+m, final_node_var - (2*n+m), final_ct_var)
+            n_conditions, n_vars = gen_n_conditions(n+m, m, final_node_var - (2*n+m), final_ct_var)
             e_conditions, e_vars = gen_e_conditions(n, n+m, num_edges - (n+m)*n, final_edge_var - num_edges + 1, final_edge_var, n_vars[-1])
             conditions = tree_conditions + subtree_conditions + n_conditions + e_conditions
             input_name = in_file + "_" + str(i)

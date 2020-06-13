@@ -28,27 +28,28 @@ def parse_input(path):
     return mats
 
 def gen_i_conditions(n, m, total_nodes):
+    num_internal_nodes = total_nodes - n - 1
     # Each leaf must be included in the tree (I(l, k, l) = True)
     root_i_condition = Condition([[1]], True, n*m, total_nodes-(n-1))
 
-    i_condition = Condition([list(range(2, n+m+2))], True, n*m, total_nodes - n + 1)
-    leaf_i_condition = Condition([[n+m+2]], True, n*m, total_nodes - n + 1)
+    i_condition = Condition([list(range(2, num_internal_nodes+2))], True, n*m, num_internal_nodes + 2)
+    leaf_i_condition = Condition([[num_internal_nodes+2]], True, n*m, num_internal_nodes + 2)
 
-    final_i_val = n * m * (total_nodes - n + 1)
+    final_i_val = n * m * (num_internal_nodes + 2)
 
     print("i vars start at: 1")
 
     return [root_i_condition, i_condition, leaf_i_condition], final_i_val
 
-def gen_t_conditions(n, m, total_nodes, final_i_var):
+def gen_t_conditions(n, m, num_internal_nodes, total_nodes, final_i_var):
     # m commodities and n+m internal nodes
     # commodities can't be repeated over using the Condition (requires adding a different number to first elements than last), but each node can be
     root_t_condition = Condition([[-1*(final_i_var + 1)]], True, m, total_nodes)
     t_condition = Condition(list(), False)
-    leaf_t_condition = Condition([[x] for x in range(final_i_var + n + m + 2, final_i_var + n + m + n + 2)], True, m, total_nodes)
+    leaf_t_condition = Condition([[x] for x in range(final_i_var + num_internal_nodes + 2, final_i_var + total_nodes + 1)], True, m, total_nodes)
 
     for k in range(m):
-        for j in range(n + m):
+        for j in range(num_internal_nodes):
             i_vars = list()
             t_var = final_i_var + 2 + k*total_nodes + j
             for l in range(n):
@@ -63,24 +64,24 @@ def gen_t_conditions(n, m, total_nodes, final_i_var):
 
     return [root_t_condition, t_condition, leaf_t_condition], final_t_var
 
-def gen_f_conditions(n, m, total_edges, final_t_var):
-    f_condition_1 = Condition([list(range(final_t_var+1, final_t_var+n+m+1))], True, m*n, total_edges - (m+n)*(n-1))
+def gen_f_conditions(n, m, num_internal_nodes, total_edges, final_t_var):
+    f_condition_1 = Condition([list(range(final_t_var+1, final_t_var+num_internal_nodes+1))], True, m*n, total_edges - (num_internal_nodes)*(n-1))
     f_condition_2 = Condition(list(), False)
 
-    f_vars = list(range(final_t_var + 1, final_t_var + total_edges - (m+n)*(n-1) + 1))
+    f_vars = list(range(final_t_var + 1, final_t_var + total_edges - (num_internal_nodes)*(n-1) + 1))
 
     print("f vars start at:", f_vars[0])
 
     for k in range(m):
         for l in range(n):
-            for j in range(1, m+n+1):
-                current_node_f_vars = [final_t_var + (k*n+l)*(total_edges-(m+n)*(n-1)) + j]
-                current_i_var = (n+m + 2)*(l+k*n) + j + 1
+            for j in range(1, num_internal_nodes+1):
+                current_node_f_vars = [final_t_var + (k*n+l)*(total_edges-(num_internal_nodes)*(n-1)) + j]
+                current_i_var = (num_internal_nodes + 2)*(l+k*n) + j + 1
                 start_i_var = current_i_var - j
                 f_condition_2.add_clause([-1*current_node_f_vars[-1], current_i_var])
 
                 for i in range(j-1):
-                    current_node_f_vars.append(current_node_f_vars[-1] + m + n - max(i,1))
+                    current_node_f_vars.append(current_node_f_vars[-1] + num_internal_nodes - max(i,1))
                     f_condition_2.add_clause([-1*current_node_f_vars[-1], current_i_var])
 
                 f_condition_2.add_clause(current_node_f_vars + [-1*current_i_var])
@@ -89,57 +90,57 @@ def gen_f_conditions(n, m, total_edges, final_t_var):
             # The condition for *only* one edge going to the leaf comes in F condition 3
             f_condition_2.add_clause([x+1 for x in current_node_f_vars[1:]] + [current_node_f_vars[-1] + 2])
 
-    f_condition_3 = Condition(list(), True, m*n, total_edges-(m+n)*(n-1))
+    f_condition_3 = Condition(list(), True, m*n, total_edges-(num_internal_nodes)*(n-1))
 
-    for j in range(2, m+n+2):
+    for j in range(2, num_internal_nodes+2):
         start_f_var = final_t_var + j
 
         for start_i in range(j - 1):
-            next_f_var = start_f_var + m + n - max(start_i, 1)
+            next_f_var = start_f_var + num_internal_nodes - max(start_i, 1)
 
             if start_i == 0 and j == m+n+1:
                 # no edge from the root to any leaf, so continue
-                start_f_var = start_f_var + m + n - max(start_i, 1)
+                start_f_var = start_f_var + num_internal_nodes - max(start_i, 1)
                 continue
 
             for i in range(start_i + 1, j):
                 f_condition_3.add_clause([-1*start_f_var, -1*next_f_var])
-                next_f_var = next_f_var + m + n - max(i, 1)
+                next_f_var = next_f_var + num_internal_nodes - max(i, 1)
 
-            start_f_var = start_f_var + m + n - max(start_i, 1)
+            start_f_var = start_f_var + num_internal_nodes - max(start_i, 1)
     
-    f_condition_4 = Condition(list(), True, m*n, total_edges-(m+n)*(n-1))
+    f_condition_4 = Condition(list(), True, m*n, total_edges-(num_internal_nodes)*(n-1))
     current_f_vars = f_vars
 
     for i in range(m+n): # don't need to look at edges out of last internal node bc there's only one, going to leaf l
-        for start_j in range(min(m+n, m+n-i+1)):
+        for start_j in range(min(num_internal_nodes, num_internal_nodes-i+1)):
             first_f_var = current_f_vars[start_j]
 
-            for j in range(start_j + 1, min(m+n, m+n-i+1)):
+            for j in range(start_j + 1, min(num_internal_nodes, num_internal_nodes-i+1)):
                 second_f_var = current_f_vars[j]
                 f_condition_4.add_clause([-1*first_f_var, -1*second_f_var])
         
-        current_f_vars = current_f_vars[min(m+n, m+n-i+1):]
+        current_f_vars = current_f_vars[min(num_internal_nodes, num_internal_nodes-i+1):]
 
 
-    f_condition_5 = Condition(list(), True, n*m, total_edges-(m+n)*(n-1))
-    current_f_vars = f_vars[m+n:]
+    f_condition_5 = Condition(list(), True, n*m, total_edges-(num_internal_nodes)*(n-1))
+    current_f_vars = f_vars[num_internal_nodes:]
 
 
-    for i_prime in range(m+n):
+    for i_prime in range(num_internal_nodes):
         start_f_var = f_vars[i_prime]
-        current_f_i_prime_vars = f_vars[m+n:]
+        current_f_i_prime_vars = f_vars[num_internal_nodes:]
         f_i_prime_vars = [f_vars[i_prime]]
 
 
         for i in range(i_prime):
             f_i_prime_vars.append(current_f_i_prime_vars[i_prime-i-1])
-            current_f_i_prime_vars = current_f_i_prime_vars[min(m+n, m+n-i):]
+            current_f_i_prime_vars = current_f_i_prime_vars[min(num_internal_nodes, num_internal_nodes-i):]
 
-        for f_i in current_f_vars[:min(m+n, m+n-i_prime)]: # second arg to min is simplified from m+n+2-(i+1)               
+        for f_i in current_f_vars[:min(num_internal_nodes, num_internal_nodes-i_prime)]: # second arg to min is simplified from m+n+2-(i+1)               
             f_condition_5.add_clause([-1*(f_i)] + [x for x in f_i_prime_vars])
 
-        current_f_vars = current_f_vars[min(m+n, m+n-i_prime):]
+        current_f_vars = current_f_vars[min(num_internal_nodes, num_internal_nodes-i_prime):]
 
 
 
@@ -147,15 +148,15 @@ def gen_f_conditions(n, m, total_edges, final_t_var):
 
     return [f_condition_1, f_condition_2, f_condition_3, f_condition_4, f_condition_5], last_f_var, f_vars
 
-def gen_x_conditions(n, m, total_edges, last_f_var, f_vars):
+def gen_x_conditions(n, m, num_internal_nodes, total_edges, last_f_var, f_vars):
     x_condition = Condition(list(), False)
     x_vars = [x for x in range(last_f_var + 1, last_f_var + total_edges + 1)]
-    leaf_f_vars = [0 for x in range(m+n)]
+    leaf_f_vars = [0 for x in range(num_internal_nodes)]
     last_index = len(f_vars) - 1
     print("x vars start at:", x_vars[0])
 
-    for f in range(m+n):
-        leaf_f_vars[m+n-f-1] = f_vars[-1-f*(f+1)//2]
+    for f in range(num_internal_nodes):
+        leaf_f_vars[num_internal_nodes-f-1] = f_vars[-1-f*(f+1)//2]
 
     last_x_var = last_f_var + m*total_edges
 
@@ -165,21 +166,21 @@ def gen_x_conditions(n, m, total_edges, last_f_var, f_vars):
         for i, f_var in enumerate(f_vars):
             if f_var in leaf_f_vars:
                 for x in range(n):
-                    x_condition.add_clause([(n*k+x)*(total_edges-(n+m)*(n-1)) + f_var, -1*(x_vars[x_i + i +x] + k*total_edges)])
-                    x_condition.add_clause([-1*((n*k+x)*(total_edges-(n+m)*(n-1)) + f_var), x_vars[x_i + i +x] + k*total_edges])
+                    x_condition.add_clause([(n*k+x)*(total_edges-(num_internal_nodes)*(n-1)) + f_var, -1*(x_vars[x_i + i +x] + k*total_edges)])
+                    x_condition.add_clause([-1*((n*k+x)*(total_edges-(num_internal_nodes)*(n-1)) + f_var), x_vars[x_i + i +x] + k*total_edges])
 
                 x_i += n-1
             else:
                 for l in range(n):
-                    x_condition.add_clause([-1*((n*k+l)*(total_edges-(n+m)*(n-1)) + f_var), x_vars[x_i+i]+k*total_edges])
+                    x_condition.add_clause([-1*((n*k+l)*(total_edges-(num_internal_nodes)*(n-1)) + f_var), x_vars[x_i+i]+k*total_edges])
 
-                x_condition.add_clause([(n*k+x)*(total_edges-(n+m)*(n-1)) + f_var for x in range(n)] + [-1*(x_vars[x_i+i] + k*total_edges)])
+                x_condition.add_clause([(n*k+x)*(total_edges-(num_internal_nodes)*(n-1)) + f_var for x in range(n)] + [-1*(x_vars[x_i+i] + k*total_edges)])
 
     #last_x_var = x_vars[-1]
 
     return [x_condition], last_x_var, x_vars
 
-def gen_d_conditions(n, m, total_edges, last_x_var, x_vars):
+def gen_d_conditions(n, m, num_internal_nodes, total_edges, last_x_var, x_vars):
     d_condition_1 = Condition(list(), False)
     d_condition_2 = Condition(list(), False)
     d_vars = list(range(last_x_var + 1, last_x_var + total_edges + 1))
@@ -190,73 +191,72 @@ def gen_d_conditions(n, m, total_edges, last_x_var, x_vars):
             d_condition_1.add_clause([-1*(k*total_edges + x_var), d_vars[i]])
         d_condition_1.add_clause([x_vars[i] + x*total_edges for x in range(m)] + [-1*d_vars[i]])
     
-    for j in range(3, 2*n+m+1):
+    for j in range(3, num_internal_nodes + n + 1):
         d_i_vars = d_vars
 
-        for i in range(min(n+m-1,j-2)):
-            if i == 0 and j > n + m:
-                d_i_vars = d_i_vars[n+m:]
+        for i in range(min(num_internal_nodes-1,j-2)):
+            if i == 0 and j > num_internal_nodes:
+                d_i_vars = d_i_vars[num_internal_nodes:]
                 continue
 
             d_ij = d_i_vars[j - i - 1]
 
             if i == 0:
-                d_h_vars = d_i_vars[n+m:]
+                d_h_vars = d_i_vars[num_internal_nodes:]
             else:
-                d_h_vars = d_i_vars[2*n+m-i:]
+                d_h_vars = d_i_vars[n + num_internal_nodes - i:]
 
-            for h in range(i+1, min(n+m,j-1)):
+            for h in range(i+1, min(num_internal_nodes,j-1)):
 
                 d_hj = d_h_vars[j - h - 1]
-                d_g_vars = d_h_vars[2*n+m-h:]                
+                d_g_vars = d_h_vars[n + num_internal_nodes - h:]                
 
-                for g in range(h+1, min(n+m+1, j)):
+                for g in range(h+1, min(num_internal_nodes+1, j)):
                     
                     d_gj = d_g_vars[j - g - 1]
                     d_condition_2.add_clause([-d_ij, -d_hj, -d_gj])
-                    d_g_vars = d_g_vars[2*n+m-g:]
+                    d_g_vars = d_g_vars[n + num_internal_nodes - g:]
                 
-                d_h_vars = d_h_vars[2*n+m-h:]
+                d_h_vars = d_h_vars[n + num_internal_nodes - h:]
             
             if i == 0:
-                d_i_vars = d_i_vars[n+m:]
+                d_i_vars = d_i_vars[num_internal_nodes:]
             else:
-                d_i_vars = d_i_vars[2*n+m-i:]
+                d_i_vars = d_i_vars[n + num_internal_nodes - i:]
 
     return [d_condition_1, d_condition_2], d_vars[-1]
 
-def gen_tree_conditions(n, m):
+def gen_tree_conditions(n, m, num_internal_nodes):
     # Have adjacency mat for edges?
     # characters = columns
     # taxa = rows
-    num_internal_nodes = n + m
     total_nodes = 1 + num_internal_nodes + n # root + internal + leaves
     total_edges = num_internal_nodes + (num_internal_nodes*(num_internal_nodes-1))//2 + num_internal_nodes*n
 
     i_conditions, final_i_var = gen_i_conditions(n, m, total_nodes) # Conditions for each node being included in a commodity tree with flow passing through them to a specific leaf
-    t_conditions, final_t_var = gen_t_conditions(n, m, total_nodes, final_i_var) # Conditions for each node being included in a commodity tree
-    f_conditions, final_f_var, f_vars = gen_f_conditions(n, m, total_edges, final_t_var) # Conditions for each edge being included in a commodity tree going to a specific leaf
-    x_conditions, final_x_var, x_vars = gen_x_conditions(n, m, total_edges, final_f_var, f_vars) # Condition for edges being included in a commodity tree
-    d_conditions, final_d_var = gen_d_conditions(n, m, total_edges, final_x_var, x_vars) # Condition for edges being included in the DAG
+    t_conditions, final_t_var = gen_t_conditions(n, m, num_internal_nodes, total_nodes, final_i_var) # Conditions for each node being included in a commodity tree
+    f_conditions, final_f_var, f_vars = gen_f_conditions(n, m, num_internal_nodes, total_edges, final_t_var) # Conditions for each edge being included in a commodity tree going to a specific leaf
+    x_conditions, final_x_var, x_vars = gen_x_conditions(n, m, num_internal_nodes, total_edges, final_f_var, f_vars) # Condition for edges being included in a commodity tree
+    d_conditions, final_d_var = gen_d_conditions(n, m, num_internal_nodes, total_edges, final_x_var, x_vars) # Condition for edges being included in the DAG
 
     conditions = i_conditions + t_conditions + f_conditions + x_conditions + d_conditions
     return conditions, final_t_var, final_d_var
 
 
-def gen_rct_conditions(num_rows, num_cols, total_nodes, final_edge_var):
+def gen_rct_conditions(num_rows, num_cols, num_internal_nodes, total_nodes, final_edge_var):
     final_rct_var = final_edge_var + num_cols*total_nodes
     rct_vars = [r for r in range(final_edge_var + 1, final_rct_var + 1)]
-    i_offset = num_rows*num_cols*(num_rows + num_cols + 2)
+    i_offset = num_rows*num_cols*(num_internal_nodes + 2)
 
     print("rct vars start at:", rct_vars[0])
 
     rct_condition_1 = Condition([[i_offset + 1, -1*(final_edge_var + 1)]], True, num_cols*total_nodes, 1)
-    rct_condition_2 = Condition([[x for x in range(final_edge_var + 2, final_edge_var + num_cols+num_rows+2)]], True, num_cols, total_nodes)
+    rct_condition_2 = Condition([[x for x in range(final_edge_var + 2, final_edge_var + num_internal_nodes+2)]], True, num_cols, total_nodes)
     
     # Root can't be the root of the subtree
     rct_condition_2.add_clause([-1*(final_edge_var + 1)])
 
-    for x in range(num_cols+num_rows+2, num_cols+2*num_rows+2):
+    for x in range(num_internal_nodes + 2, total_nodes + 1):
         rct_condition_2.add_clause([-1*(x+final_edge_var)])
 
     rct_condition_3 = Condition(list(), True, num_cols, total_nodes)
@@ -268,25 +268,27 @@ def gen_rct_conditions(num_rows, num_cols, total_nodes, final_edge_var):
     return [rct_condition_1, rct_condition_2, rct_condition_3], rct_vars
 
 
-def gen_z_conditions(num_rows, num_cols, num_edges, total_nodes, final_edge_var, final_rct_var):
-    final_z_var = final_rct_var + num_cols*num_edges
+def gen_z_conditions(num_rows, num_cols, num_edges, num_internal_nodes, total_nodes, final_edge_var, final_rct_var):
+    final_z_var = final_rct_var + num_cols * num_edges
     final_ct_var = final_z_var + num_cols * total_nodes
     z_vars = [z for z in range(final_rct_var + 1, final_z_var + 1)]
     x_vars = [x for x in range(final_edge_var - (num_cols+1)*num_edges + 1, final_edge_var - num_edges + 1)]
     ct_vars = [c for c in range(final_z_var + 1, final_ct_var + 1)]
+
+    print("z vars start at: {}".format(z_vars[0]))
 
     z_condition = Condition(list(), False)
     clauses = list()
 
     for k in range(num_cols):
         offset = k*num_edges
-        for i in range(total_nodes-num_rows):
+        for i in range(total_nodes - num_rows):
             for j in range(i + 1, total_nodes):
                 z_var = z_vars[offset]
                 ct_var = ct_vars[i + k*total_nodes]
                 x_var = x_vars[offset]
 
-                if i == 0 and j > (num_rows+num_cols):
+                if i == 0 and j > (num_internal_nodes):
                     continue
                 elif i == 0:
                     z_condition.add_clause([-z_var])
@@ -303,11 +305,13 @@ def gen_z_conditions(num_rows, num_cols, num_edges, total_nodes, final_edge_var,
     return [z_condition], z_vars
 
 
-def gen_ct_conditions(input, num_rows, num_cols, num_edges, total_nodes, rct_vars, z_vars):
+def gen_ct_conditions(input, num_rows, num_cols, num_edges, num_internal_nodes, total_nodes, rct_vars, z_vars):
     final_z_var = z_vars[-1]
     final_ct_var = final_z_var + num_cols * total_nodes
     ct_vars = [c for c in range(final_z_var + 1, final_ct_var + 1)]
     ct_condition = Condition(list(), False)
+
+    print("ct vars start at: {}".format(ct_vars[0]))
 
     for k in range(num_cols):
         ct_condition.add_clause([-ct_vars[k*total_nodes]])
@@ -318,14 +322,14 @@ def gen_ct_conditions(input, num_rows, num_cols, num_edges, total_nodes, rct_var
             clause = [-ct_var, rct_var]
             ct_condition.add_clause([ct_var, -rct_var])
 
-            if j < num_rows+num_cols+1:
+            if j < num_internal_nodes+1:
                 start = 0
                 stop = j
                 z_offset = k*num_edges + j - 1
             else:
                 start = 1
-                stop = num_cols+num_rows+1
-                z_offset = k*num_edges + num_cols + num_rows + j - 2
+                stop = num_internal_nodes+1
+                z_offset = k*num_edges + num_internal_nodes + j - 2
 
             for i in range(start, stop):
                 z_var = z_vars[z_offset]
@@ -333,15 +337,15 @@ def gen_ct_conditions(input, num_rows, num_cols, num_edges, total_nodes, rct_var
                 ct_condition.add_clause([ct_var, -z_var])
 
                 if i == 0:
-                    z_offset += num_cols + num_rows - 1
+                    z_offset += num_internal_nodes - 1
                 else:
-                    z_offset += num_cols + 2*num_rows - i - 1
+                    z_offset += num_internal_nodes + num_rows - i - 1
             
             ct_condition.add_clause(clause)
     
     leaf_ct_condition = Condition(list(), False)
 
-    last_ct_internal_var = z_vars[-1] + num_cols+num_rows+1
+    last_ct_internal_var = z_vars[-1] + num_internal_nodes+1
     non_zero_indices = input.nonzero()
 
     for k in range(num_cols):
@@ -355,21 +359,22 @@ def gen_ct_conditions(input, num_rows, num_cols, num_edges, total_nodes, rct_var
     
     return [ct_condition, leaf_ct_condition], final_ct_var
 
-
-def gen_subtree_conditions(input, n, m, num_edges, final_node_var, final_edge_var):
+def gen_subtree_conditions(input, n, m, num_edges, num_internal_nodes, final_node_var, final_edge_var):
     conditions = list()
-    total_nodes = 2 * n + m + 1
-    rct_conditions, rct_vars = gen_rct_conditions(n, m, total_nodes, final_edge_var)
-    z_conditions, z_vars = gen_z_conditions(n, m, num_edges, total_nodes, final_edge_var, rct_vars[-1])
-    ct_conditions, final_ct_var = gen_ct_conditions(input, n, m, num_edges, total_nodes, rct_vars, z_vars)
+    total_nodes = num_internal_nodes + n + 1
+    rct_conditions, rct_vars = gen_rct_conditions(n, m, num_internal_nodes, total_nodes, final_edge_var)
+    z_conditions, z_vars = gen_z_conditions(n, m, num_edges, num_internal_nodes, total_nodes, final_edge_var, rct_vars[-1])
+    ct_conditions, final_ct_var = gen_ct_conditions(input, n, m, num_edges, num_internal_nodes, total_nodes, rct_vars, z_vars)
 
     return rct_conditions + z_conditions + ct_conditions, final_ct_var
 
-def gen_reticulation_conditions(n, m, num_edges, final_d_var, final_ct_var):
-    r_vars = [x for x in range(final_ct_var +  1, final_ct_var + 2*n + m + 1)] # r variables for all internal and leaf nodes but not the root bc it's a source
+def gen_reticulation_conditions(n, m, num_internal_nodes, num_edges, final_d_var, final_ct_var):
+    r_vars = [x for x in range(final_ct_var +  1, final_ct_var + num_internal_nodes + n + 1)] # r variables for all internal and leaf nodes but not the root bc it's a source
     leaf_r_vars = r_vars[-n:]
     d_vars = [x for x in range(final_d_var - num_edges + 1, final_d_var + 1)]
     final_r_var = r_vars[-1]
+
+    print("r vars start at: {}".format(r_vars[0]))
 
     r_condition = Condition(list(), False)
 
@@ -382,17 +387,17 @@ def gen_reticulation_conditions(n, m, num_edges, final_d_var, final_ct_var):
         clauses = list()
         vars = list()
 
-        for i in range(min(j_node, m+n+1)):
-            if i == 0 and j_node > n + m:
-                offset += n+m-1
+        for i in range(min(j_node, num_internal_nodes+1)):
+            if i == 0 and j_node > num_internal_nodes:
+                offset += num_internal_nodes-1
                 continue # no edge from 0 to leaves
 
             vars.append(d_vars[offset])
 
             if i == 0:
-                offset += m+n-1
+                offset += num_internal_nodes-1
             else:
-                offset +=  m + 2*n - (i + 1)
+                offset +=  n + num_internal_nodes - (i + 1)
 
         r_implies_dnf = list()
         clause = list()
@@ -425,8 +430,8 @@ def gen_reticulation_conditions(n, m, num_edges, final_d_var, final_ct_var):
     return [r_condition], final_r_var
 
 
-def gen_counting_conditions(n, m, goal_count, final_r_var):
-    r_vars = [r for r in range(final_r_var - (m+2*n - 1), final_r_var + 1)]
+def gen_counting_conditions(n, m, num_internal_nodes, goal_count, final_r_var):
+    r_vars = [r for r in range(final_r_var - (num_internal_nodes+n - 1), final_r_var + 1)]
     c_vars = [c for c in range(final_r_var + 1, final_r_var + (len(r_vars) + 1)*(goal_count + 1) + 1)]
     c_condition = Condition(list(), False)
     num_r_vars = len(r_vars)
@@ -490,8 +495,8 @@ def call_solver(solver_path, cnf_file_path):
 
     return total_time, sat
 
-def minimize_sat(conditions, var_offset, num_rows, num_cols, solver, cnf_file_path):
-    bound = num_rows + num_cols
+def minimize_sat(conditions, var_offset, num_rows, num_cols, num_internal_nodes, solver, cnf_file_path):
+    bound = num_internal_nodes
     total_time = 0
     runs_required = 0
     sat = True
@@ -505,7 +510,7 @@ def minimize_sat(conditions, var_offset, num_rows, num_cols, solver, cnf_file_pa
         solver_path = "./lingeling/plingeling"
 
     while sat and bound >= 0:
-        counting_conditions, final_c_var = gen_counting_conditions(num_rows, num_cols, bound, var_offset)
+        counting_conditions, final_c_var = gen_counting_conditions(num_rows, num_cols, num_internal_nodes, bound, var_offset)
         num_counting_clauses = get_num_clauses(counting_conditions)
         append_to_cnf_file(counting_conditions, final_c_var, num_clauses + num_counting_clauses, cnf_file_path)
         time, sat = call_solver(solver_path, cnf_file_path)
@@ -522,7 +527,7 @@ def minimize_sat(conditions, var_offset, num_rows, num_cols, solver, cnf_file_pa
         bound = 0
 
     results = {"time":total_time, "bound":bound, "runs_required":runs_required, "method":"SAT"}
-    subprocess.run(["rm", "temp"])
+    # subprocess.run(["rm", "temp"])
     return results
 
 def minimize_dp(file_path):
@@ -556,19 +561,14 @@ def main(argv):
     if len(argv) < 2:
         print("Error: usage\n\tpython3 pipeline.py -o {output directory} -s solver [input files]")
         return
-    if "-o" not in argv and "-s" not in argv:
+    if "-o" not in argv and "-n" not in argv:
         input_files = argv[1:]
-    elif "-o" not in argv or "-s" not in argv:
+    elif "-o" not in argv or "-n" not in argv:
         input_files = argv[3:]
     else:
         input_files = argv[5:]
     if "-o" in argv:
         outdir = argv[argv.index("-o") + 1]
-    if "-s" in argv:
-        solver_name = argv[argv.index("-s") + 1]
-
-        if solver_name == "plingeling":
-            solver = Solver.PLINGELING
 
     for in_file in input_files:
         input_path = "./input/" + in_file
@@ -578,15 +578,22 @@ def main(argv):
         for mat in input_matrices:
             n = mat.shape[0]
             m = mat.shape[1]
-            num_edges = (n + m) + n * (n+m) + (n+m)*(n+m-1)//2
 
-            tree_conditions, final_node_var, final_edge_var = gen_tree_conditions(n, m)
-            subtree_conditions, final_ct_var = gen_subtree_conditions(mat, n, m, num_edges, final_node_var, final_edge_var)
-            reticulation_conditions, final_r_var = gen_reticulation_conditions(n, m, num_edges, final_edge_var, final_ct_var)
+            if "-n" in argv:
+                num_internal_nodes = int(argv[argv.index("-n") + 1])
+            else:
+                num_internal_nodes = n + m
+
+            num_edges = (num_internal_nodes) + n * (num_internal_nodes) + (num_internal_nodes)*(num_internal_nodes-1)//2
+
+
+            tree_conditions, final_node_var, final_edge_var = gen_tree_conditions(n, m, num_internal_nodes)
+            subtree_conditions, final_ct_var = gen_subtree_conditions(mat, n, m, num_edges, num_internal_nodes, final_node_var, final_edge_var)
+            reticulation_conditions, final_r_var = gen_reticulation_conditions(n, m, num_internal_nodes, num_edges, final_edge_var, final_ct_var)
             conditions = tree_conditions + subtree_conditions + reticulation_conditions
             input_name = in_file + "_" + str(i)
 
-            sat_results = minimize_sat(conditions, final_r_var, n, m, solver, input_name + ".cnf")
+            sat_results = minimize_sat(conditions, final_r_var, n, m, num_internal_nodes, solver, input_name + ".cnf")
             with open("./input/temp", "w+") as temp:
                 s = ""
                 for row in mat:
@@ -599,10 +606,9 @@ def main(argv):
 
             print_results([sat_results], input_name)
 
-            i += 1
-
-            
+            i += 1 
     
     return
 
-main(["pipeline.py", "-o", "test_output", "-s", "glucose-syrup", "test5x10", "test8x10", "test7x12", "test10x10"])
+#main(["pipeline.py", "-o", "test_output", "-n", "3", "test4"])
+main(sys.argv)

@@ -282,7 +282,7 @@ def gen_z_conditions(num_rows, num_cols, num_edges, num_internal_nodes, total_no
 
     for k in range(num_cols):
         offset = k*num_edges
-        for i in range(total_nodes - num_rows):
+        for i in range(num_internal_nodes):
             for j in range(i + 1, total_nodes):
                 z_var = z_vars[offset]
                 ct_var = ct_vars[i + k*total_nodes]
@@ -500,14 +500,20 @@ def call_solver(solver_path, cnf_file_path, time_limit):
 
     return total_time, sat
 
-def minimize_sat(conditions, var_offset, num_rows, num_cols, num_internal_nodes, initial_bound, solver, cnf_file_path, time_limit):
+def gen_conditions(num_rows, num_cols, mat, num_internal_nodes, num_edges, bound):
+    tree_conditions, final_node_var, final_edge_var = gen_tree_conditions(num_rows, num_cols, num_internal_nodes)
+    subtree_conditions, final_ct_var = gen_subtree_conditions(mat, num_rows, num_cols, num_edges, num_internal_nodes, final_node_var, final_edge_var)
+    reticulation_conditions, final_r_var = gen_reticulation_conditions(num_rows, num_cols, num_internal_nodes, num_edges, final_edge_var, final_ct_var)
+    counting_conditions, final_c_var = gen_counting_conditions(num_rows, num_cols, num_internal_nodes, bound, final_r_var)
+    conditions = tree_conditions + subtree_conditions + reticulation_conditions + counting_conditions
+    
+    return conditions, final_c_var
+
+def minimize_sat(num_rows, num_cols, num_internal_nodes, initial_bound, input_mat, solver, cnf_file_path, time_limit):
     total_time = 0
     runs_required = 0
     sat = True
     bound = initial_bound
-
-    num_clauses = get_num_clauses(conditions)
-    write_cnf_file(conditions, var_offset, num_clauses, "temp")
 
     if (solver == Solver.GLUCOSE_SYRUP):
         solver_path = "./glucose-syrup/parallel/glucose-syrup"
@@ -515,9 +521,10 @@ def minimize_sat(conditions, var_offset, num_rows, num_cols, num_internal_nodes,
         solver_path = "./lingeling/plingeling"
 
     while sat and bound >= 0 and bound <= initial_bound:
-        counting_conditions, final_c_var = gen_counting_conditions(num_rows, num_cols, num_internal_nodes, bound, var_offset)
-        num_counting_clauses = get_num_clauses(counting_conditions)
-        append_to_cnf_file(counting_conditions, final_c_var, num_clauses + num_counting_clauses, cnf_file_path)
+        num_edges = (num_internal_nodes) + num_rows * (num_internal_nodes) + (num_internal_nodes)*(num_internal_nodes-1)//2
+        conditions, final_var = gen_conditions(num_rows, num_cols, input_mat, num_internal_nodes, num_edges, bound)
+        num_clauses = get_num_clauses(conditions)
+        write_cnf_file(conditions, final_var, num_clauses, cnf_file_path)
         time, sat = call_solver(solver_path, cnf_file_path, time_limit)
         runs_required += 1
         total_time += time
@@ -527,6 +534,9 @@ def minimize_sat(conditions, var_offset, num_rows, num_cols, num_internal_nodes,
             bound -= 1
         else:
             bound += 1
+
+        if num_internal_nodes > num_rows - 2 + 2*bound:
+            num_internal_nodes = max(num_rows - 2 + 2*bound, 2)
 
     if bound == -1:
         bound = 0
@@ -593,16 +603,9 @@ def main(argv):
         else:
             bound = n + m
 
-        num_edges = (num_internal_nodes) + n * (num_internal_nodes) + (num_internal_nodes)*(num_internal_nodes-1)//2
-
-
-        tree_conditions, final_node_var, final_edge_var = gen_tree_conditions(n, m, num_internal_nodes)
-        subtree_conditions, final_ct_var = gen_subtree_conditions(mat, n, m, num_edges, num_internal_nodes, final_node_var, final_edge_var)
-        reticulation_conditions, final_r_var = gen_reticulation_conditions(n, m, num_internal_nodes, num_edges, final_edge_var, final_ct_var)
-        conditions = tree_conditions + subtree_conditions + reticulation_conditions
         input_name = input_file + "_" + str(i)
 
-        sat_results = minimize_sat(conditions, final_r_var, n, m, num_internal_nodes, bound, solver, input_name + ".cnf", time_limit)
+        sat_results = minimize_sat(n, m, num_internal_nodes, bound, mat, solver, input_name + ".cnf", time_limit)
         with open("./input/temp", "w+") as temp:
             s = ""
             for row in mat:
@@ -617,5 +620,5 @@ def main(argv):
     
     return
 
-#main(["pipeline.py", "data4", "-t", "3", "-n", "10"])
-main(sys.argv)
+main(["pipeline.py", "test5x5"])
+# main(sys.argv)

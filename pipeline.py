@@ -483,11 +483,16 @@ def get_num_clauses(conditions):
 
     return num_clauses
 
-def call_solver(solver_path, cnf_file_path):
+def call_solver(solver_path, cnf_file_path, time_limit):
 
     start_time = time.time()
     #result = subprocess.run([solver_path, "-nthreads=12", cnf_file_path], capture_output=True)
-    result = subprocess.run([solver_path, "-nthreads=12", cnf_file_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        result = subprocess.run([solver_path, "-nthreads=12", cnf_file_path], timeout=time_limit, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except subprocess.TimeoutExpired as e:
+        print("SAT solver timed out after {} seconds".format(time_limit))
+        return time_limit, False
+
     end_time = time.time()
 
     total_time = end_time - start_time
@@ -495,11 +500,11 @@ def call_solver(solver_path, cnf_file_path):
 
     return total_time, sat
 
-def minimize_sat(conditions, var_offset, num_rows, num_cols, num_internal_nodes, solver, cnf_file_path):
-    bound = num_internal_nodes
+def minimize_sat(conditions, var_offset, num_rows, num_cols, num_internal_nodes, initial_bound, solver, cnf_file_path, time_limit):
     total_time = 0
     runs_required = 0
     sat = True
+    bound = initial_bound
 
     num_clauses = get_num_clauses(conditions)
     write_cnf_file(conditions, var_offset, num_clauses, "temp")
@@ -509,11 +514,11 @@ def minimize_sat(conditions, var_offset, num_rows, num_cols, num_internal_nodes,
     else:
         solver_path = "./lingeling/plingeling"
 
-    while sat and bound >= 0:
+    while sat and bound >= 0 and bound <= initial_bound:
         counting_conditions, final_c_var = gen_counting_conditions(num_rows, num_cols, num_internal_nodes, bound, var_offset)
         num_counting_clauses = get_num_clauses(counting_conditions)
         append_to_cnf_file(counting_conditions, final_c_var, num_clauses + num_counting_clauses, cnf_file_path)
-        time, sat = call_solver(solver_path, cnf_file_path)
+        time, sat = call_solver(solver_path, cnf_file_path, time_limit)
         runs_required += 1
         total_time += time
         print("bound {}, {}, time so far: {}".format(bound, "SAT" if sat else "UNSAT", total_time))
@@ -525,22 +530,12 @@ def minimize_sat(conditions, var_offset, num_rows, num_cols, num_internal_nodes,
 
     if bound == -1:
         bound = 0
+    if bound > initial_bound:
+        bound = None
 
     results = {"time":total_time, "bound":bound, "runs_required":runs_required, "method":"SAT"}
     # subprocess.run(["rm", "temp"])
     return results
-
-def minimize_dp(file_path):
-    start = time.time()
-    output = str(subprocess.run(["perl", "historybound.pl", file_path], capture_output=True).stdout)
-    end = time.time()
-
-    total_time = end - start
-    bound_start_index = output.find('=') + 2
-    bound_end_index = output.find("\\nA")
-    bound = int(output[bound_start_index:bound_end_index])
-
-    return {"time":total_time, "bound":bound, "method":"DP"}
 
 def print_results(results, input_name):
     print("\n----results for {}-----".format(input_name))
@@ -558,57 +553,69 @@ def main(argv):
     outdir = "./output"
     solver = Solver.GLUCOSE_SYRUP
 
-    if len(argv) < 2:
-        print("Error: usage\n\tpython3 pipeline.py -o {output directory} -s solver [input files]")
+    if len(argv) < 2 or "-h" in argv or "--help" in argv:
+        print("\nError: Usage\n\tpython3 pipeline.py [input file] <options>")
+        print("\nOptions: ")
+        print("\t-h/--help\tDisplay this documentation.")
+        print("\t-o\tDirectory the output should go to. If not specified, output is printed to stdout.")
+        print("\t-t\tTime limit in seconds for each SAT solver run. Default is 3600.")
+        print("\t-n\tNumber of internal nodes to build the initial graph with. Default is n + m where n = number of rows, m = number of cols.")
+        print("\t-b\tInitial upper bound. Default is n + m where n = number of rows, m = number of cols.\n")
+
         return
-    if "-o" not in argv and "-n" not in argv:
-        input_files = argv[1:]
-    elif "-o" not in argv or "-n" not in argv:
-        input_files = argv[3:]
-    else:
-        input_files = argv[5:]
+        
+    input_file = argv[1]
+
     if "-o" in argv:
         outdir = argv[argv.index("-o") + 1]
+    if "-t" in argv:
+        time_limit = int(argv[argv.index("-t") + 1])
+    else:
+        time_limit = 3600
 
-    for in_file in input_files:
-        input_path = "./input/" + in_file
-        input_matrices = parse_input(input_path)
-        i = 0
+    input_path = "./input/" + input_file
+    input_matrices = parse_input(input_path)
+    i = 0
 
-        for mat in input_matrices:
-            n = mat.shape[0]
-            m = mat.shape[1]
+    for mat in input_matrices:
+        n = mat.shape[0]
+        m = mat.shape[1]
 
-            if "-n" in argv:
-                num_internal_nodes = int(argv[argv.index("-n") + 1])
-            else:
-                num_internal_nodes = n + m
+        if "-n" in argv:
+            num_internal_nodes = int(argv[argv.index("-n") + 1])
+        elif "-b" in argv:
+            num_internal_nodes = n - 2 + 2*int(argv[argv.index("-b") + 1])
+        else:
+            num_internal_nodes = n + m
+        if "-b" in argv:
+            bound = int(argv[argv.index("-b") + 1])
 
-            num_edges = (num_internal_nodes) + n * (num_internal_nodes) + (num_internal_nodes)*(num_internal_nodes-1)//2
+        else:
+            bound = n + m
+
+        num_edges = (num_internal_nodes) + n * (num_internal_nodes) + (num_internal_nodes)*(num_internal_nodes-1)//2
 
 
-            tree_conditions, final_node_var, final_edge_var = gen_tree_conditions(n, m, num_internal_nodes)
-            subtree_conditions, final_ct_var = gen_subtree_conditions(mat, n, m, num_edges, num_internal_nodes, final_node_var, final_edge_var)
-            reticulation_conditions, final_r_var = gen_reticulation_conditions(n, m, num_internal_nodes, num_edges, final_edge_var, final_ct_var)
-            conditions = tree_conditions + subtree_conditions + reticulation_conditions
-            input_name = in_file + "_" + str(i)
+        tree_conditions, final_node_var, final_edge_var = gen_tree_conditions(n, m, num_internal_nodes)
+        subtree_conditions, final_ct_var = gen_subtree_conditions(mat, n, m, num_edges, num_internal_nodes, final_node_var, final_edge_var)
+        reticulation_conditions, final_r_var = gen_reticulation_conditions(n, m, num_internal_nodes, num_edges, final_edge_var, final_ct_var)
+        conditions = tree_conditions + subtree_conditions + reticulation_conditions
+        input_name = input_file + "_" + str(i)
 
-            sat_results = minimize_sat(conditions, final_r_var, n, m, num_internal_nodes, solver, input_name + ".cnf")
-            with open("./input/temp", "w+") as temp:
-                s = ""
-                for row in mat:
-                    for entry in row:
-                        s += str(int(entry))
-                    s += "\n"
-                temp.write(s)
+        sat_results = minimize_sat(conditions, final_r_var, n, m, num_internal_nodes, bound, solver, input_name + ".cnf", time_limit)
+        with open("./input/temp", "w+") as temp:
+            s = ""
+            for row in mat:
+                for entry in row:
+                    s += str(int(entry))
+                s += "\n"
+            temp.write(s)
 
-            #dp_results = minimize_dp("./input/temp")
+        print_results([sat_results], input_name)
 
-            print_results([sat_results], input_name)
-
-            i += 1 
+        i += 1 
     
     return
 
-#main(["pipeline.py", "-o", "test_output", "-n", "3", "test4"])
+#main(["pipeline.py", "data4", "-t", "3", "-n", "10"])
 main(sys.argv)

@@ -597,12 +597,12 @@ def main(argv):
     if len(argv) < 2 or "-h" in argv or "--help" in argv:
         print("\nError: Usage\n\tpython3 pipeline.py [input file] <options>")
         print("\nOptions: ")
-        print("\t-h/--help\tDisplay this documentation.")
-        print("\t-d\tPrint debug messages for where each variable starts.")
-        print("\t-o\tDirectory the output should go to. If not specified, output is printed to stdout.")
-        print("\t-t\tTime limit in seconds for each SAT solver run. Default is 3600.")
-        print("\t-n\tNumber of internal nodes to build the initial graph with. Default is n + m where n = number of rows, m = number of cols.")
-        print("\t-b\tInitial upper bound. Default is n + m where n = number of rows, m = number of cols.\n")
+        print("\t-h/--help\tDisplay this documentation.\n")
+        print("\t-d\tPrint debug messages for where each variable starts.\n")
+        print("\t-o\tDirectory the output should go to. If not specified, \n\t\toutput is printed to stdout.\n")
+        print("\t-t\tTime limit in seconds for each SAT solver run. \n\t\tDefault is 3600.\n")
+        print("\t-n\tNumber of internal nodes to build the initial graph with. \n\t\tDefault is n + m where n = number of rows, \n\t\tm = number of cols.\n")
+        print("\t-b\tInitial upper bound. Default is n + m where \n\t\tn = number of rows, m = number of cols.\n")
 
         return
         

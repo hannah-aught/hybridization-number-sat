@@ -152,7 +152,8 @@ def gen_f_conditions(n, m, num_internal_nodes, total_edges, final_t_var, debug):
     return [f_condition_1, f_condition_2, f_condition_3, f_condition_4, f_condition_5], last_f_var, f_vars
 
 def gen_x_conditions(n, m, num_internal_nodes, total_edges, last_f_var, f_vars, debug):
-    x_condition = Condition(list(), False)
+    x_condition_1 = Condition(list(), False)
+    x_condition_2 = Condition(list(), False)
     x_vars = [x for x in range(last_f_var + 1, last_f_var + total_edges + 1)]
     leaf_f_vars = [0 for x in range(num_internal_nodes)]
     last_index = len(f_vars) - 1
@@ -171,19 +172,43 @@ def gen_x_conditions(n, m, num_internal_nodes, total_edges, last_f_var, f_vars, 
         for i, f_var in enumerate(f_vars):
             if f_var in leaf_f_vars:
                 for x in range(n):
-                    x_condition.add_clause([(n*k+x)*(total_edges-(num_internal_nodes)*(n-1)) + f_var, -1*(x_vars[x_i + i +x] + k*total_edges)])
-                    x_condition.add_clause([-1*((n*k+x)*(total_edges-(num_internal_nodes)*(n-1)) + f_var), x_vars[x_i + i +x] + k*total_edges])
+                    x_condition_1.add_clause([(n*k+x)*(total_edges-(num_internal_nodes)*(n-1)) + f_var, -1*(x_vars[x_i + i +x] + k*total_edges)])
+                    x_condition_1.add_clause([-1*((n*k+x)*(total_edges-(num_internal_nodes)*(n-1)) + f_var), x_vars[x_i + i +x] + k*total_edges])
 
                 x_i += n-1
             else:
                 for l in range(n):
-                    x_condition.add_clause([-1*((n*k+l)*(total_edges-(num_internal_nodes)*(n-1)) + f_var), x_vars[x_i+i]+k*total_edges])
+                    x_condition_1.add_clause([-1*((n*k+l)*(total_edges-(num_internal_nodes)*(n-1)) + f_var), x_vars[x_i+i]+k*total_edges])
 
-                x_condition.add_clause([(n*k+x)*(total_edges-(num_internal_nodes)*(n-1)) + f_var for x in range(n)] + [-1*(x_vars[x_i+i] + k*total_edges)])
+                x_condition_1.add_clause([(n*k+x)*(total_edges-(num_internal_nodes)*(n-1)) + f_var for x in range(n)] + [-1*(x_vars[x_i+i] + k*total_edges)])
 
     #last_x_var = x_vars[-1]
 
-    return [x_condition], last_x_var, x_vars
+    for j in range(2, num_internal_nodes + n + 1):
+        start_x_var = last_f_var + j
+
+        for start_i in range(min(j - 1, num_internal_nodes)):
+
+            if start_i == 0 and j > num_internal_nodes:
+                # no edge from the root to any leaf, so continue
+                start_x_var += num_internal_nodes - 1
+                continue
+            elif start_i == 0:
+                next_x_var = start_x_var + num_internal_nodes - 1
+            else:
+                next_x_var = start_x_var + num_internal_nodes + n - start_i - 1
+
+            for i in range(start_i + 1, min(j, num_internal_nodes + 1)):
+                x_condition_2.add_clause([-1*start_x_var, -1*next_x_var])
+                next_x_var += num_internal_nodes + n - i - 1
+            
+            if start_i == 0:
+                start_x_var += num_internal_nodes - 1
+            else:
+                start_x_var += num_internal_nodes + n - start_i - 1
+
+
+    return [x_condition_1, x_condition_2], last_x_var, x_vars
 
 def gen_d_conditions(n, m, num_internal_nodes, total_edges, last_x_var, x_vars, debug):
     d_condition_1 = Condition(list(), False)
@@ -291,7 +316,7 @@ def gen_z_conditions(num_rows, num_cols, num_edges, num_internal_nodes, total_no
 
     for k in range(num_cols):
         offset = k*num_edges
-        for i in range(num_internal_nodes):
+        for i in range(num_internal_nodes + 1):
             for j in range(i + 1, total_nodes):
                 z_var = z_vars[offset]
                 ct_var = ct_vars[i + k*total_nodes]
@@ -625,8 +650,6 @@ def main(argv):
 
         if "-n" in argv:
             num_internal_nodes = int(argv[argv.index("-n") + 1])
-        elif "-b" in argv:
-            num_internal_nodes = n - 2 + 2*int(argv[argv.index("-b") + 1])
         else:
             num_internal_nodes = n + m
         if "-b" in argv:
@@ -651,5 +674,5 @@ def main(argv):
     
     return
 
-# main(["pipeline.py", "test5x5", "-d"])
+# main(["pipeline.py", "test1", "-d", "-b", "1"])
 main(sys.argv)

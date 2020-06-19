@@ -538,7 +538,7 @@ def call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, num_
     for t_var in range(start_t_var + 1, final_t_var + 1):
         if (t_var - start_t_var) % total_nodes == 0 or (t_var - start_t_var) % total_nodes > num_internal_nodes:
             continue
-        pattern = re.compile("-" + str(t_var) + r"\s+")
+        pattern = re.compile("-" + str(t_var) + r"[\\n\s+]")
         if re.search(pattern, text) == None:
             used_internal_nodes[(t_var - start_t_var) % total_nodes] = 1
 
@@ -679,5 +679,5 @@ def main(argv):
     
     return
 
-# main(["pipeline.py", "husonjoint", "-b", "4", "-n", "13"])
-main(sys.argv)
+main(["pipeline.py", "husonjoint", "-d", "-b", "4", "-n", "14"])
+# main(sys.argv)

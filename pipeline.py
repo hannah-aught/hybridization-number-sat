@@ -16,8 +16,6 @@ def parse_input(path):
     with open(path, "r") as f:
         lines = np.asarray(f.readlines())
         start_indices = np.asarray([i for i, line in enumerate(lines) if "//" in line] + [len(lines) + 1])
-        m = int(lines[start_indices[0] + 1][len("segsites: "):])
-        n = start_indices[1] - start_indices[0] - 4
         mats = list()
 
         for i, j in enumerate(start_indices[:-1] + 3):
@@ -80,7 +78,6 @@ def gen_f_conditions(n, m, num_internal_nodes, total_edges, final_t_var, debug):
             for j in range(1, num_internal_nodes+1):
                 current_node_f_vars = [final_t_var + (k*n+l)*(total_edges-(num_internal_nodes)*(n-1)) + j]
                 current_i_var = (num_internal_nodes + 2)*(l+k*n) + j + 1
-                start_i_var = current_i_var - j
                 f_condition_2.add_clause([-1*current_node_f_vars[-1], current_i_var])
 
                 for i in range(j-1):
@@ -156,7 +153,6 @@ def gen_x_conditions(n, m, num_internal_nodes, total_edges, last_f_var, f_vars, 
     x_condition_2 = Condition(list(), False)
     x_vars = [x for x in range(last_f_var + 1, last_f_var + total_edges + 1)]
     leaf_f_vars = [0 for x in range(num_internal_nodes)]
-    last_index = len(f_vars) - 1
 
     if debug:
         print("x vars start at:", x_vars[0])
@@ -312,7 +308,6 @@ def gen_z_conditions(num_rows, num_cols, num_edges, num_internal_nodes, total_no
         print("z vars start at: {}".format(z_vars[0]))
 
     z_condition = Condition(list(), False)
-    clauses = list()
 
     for k in range(num_cols):
         offset = k*num_edges
@@ -395,7 +390,6 @@ def gen_ct_conditions(input, num_rows, num_cols, num_edges, num_internal_nodes, 
     return [ct_condition, leaf_ct_condition], final_ct_var
 
 def gen_subtree_conditions(input, n, m, num_edges, num_internal_nodes, final_node_var, final_edge_var, debug):
-    conditions = list()
     total_nodes = num_internal_nodes + n + 1
     rct_conditions, rct_vars = gen_rct_conditions(n, m, num_internal_nodes, total_nodes, final_edge_var, debug)
     z_conditions, z_vars = gen_z_conditions(n, m, num_edges, num_internal_nodes, total_nodes, final_edge_var, rct_vars[-1], debug)
@@ -471,7 +465,6 @@ def gen_counting_conditions(n, m, num_internal_nodes, goal_count, final_r_var, d
     c_vars = [c for c in range(final_r_var + 1, final_r_var + (len(r_vars) + 1)*(goal_count + 1) + 1)]
     c_condition = Condition(list(), False)
     num_r_vars = len(r_vars)
-    num_c_vars = len(c_vars)
 
     for k in range(goal_count + 1):
         for i in range(num_r_vars):
@@ -523,22 +516,29 @@ def get_num_clauses(conditions):
 
     return num_clauses
 
-def call_solver(solver_path, cnf_file_path, time_limit):
+def call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, start_t_var):
 
     start_time = time.time()
     #result = subprocess.run([solver_path, "-nthreads=12", cnf_file_path], capture_output=True)
     try:
-        result = subprocess.run([solver_path, "-nthreads=12", cnf_file_path], timeout=time_limit, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    except subprocess.TimeoutExpired as e:
+        result = subprocess.run([solver_path, "-nthreads=12", "-model", cnf_file_path], timeout=time_limit, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except subprocess.TimeoutExpired:
         print("SAT solver timed out after {} seconds".format(time_limit))
-        return time_limit, False
+        return time_limit, None, False
 
     end_time = time.time()
 
     total_time = end_time - start_time
     sat = " SATISFIABLE" in str(result.stdout)
+    used_internal_nodes = 0
+    text = result.stdout.decode("utf-8")
 
-    return total_time, sat
+    for t_var in range(start_t_var + 1, start_t_var + num_internal_nodes):
+        pattern = re.compile("-" + str(t_var) + r"\s+")
+        if re.search(pattern, text) == None:
+            used_internal_nodes += 1
+
+    return total_time, used_internal_nodes, sat
 
 def gen_conditions(num_rows, num_cols, mat, num_internal_nodes, num_edges, bound, debug):
     tree_conditions, final_node_var, final_edge_var = gen_tree_conditions(num_rows, num_cols, num_internal_nodes, debug)
@@ -565,10 +565,11 @@ def minimize_sat(num_rows, num_cols, num_internal_nodes, initial_bound, input_ma
         conditions, final_var = gen_conditions(num_rows, num_cols, input_mat, num_internal_nodes, num_edges, bound, debug)
         num_clauses = get_num_clauses(conditions)
         write_cnf_file(conditions, final_var, num_clauses, cnf_file_path)
-        time, sat = call_solver(solver_path, cnf_file_path, time_limit)
+        start_t_var = num_rows * num_cols * (num_internal_nodes + 2) + 1
+        time, used_internal_nodes, sat = call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, start_t_var)
         runs_required += 1
         total_time += time
-        print("bound {}, {}, time so far: {}".format(bound, "SAT" if sat else "UNSAT", total_time))
+        print("bound {}, using {}/{} internal nodes, {}, time so far: {}".format(bound, used_internal_nodes, num_internal_nodes, "SAT" if sat else "UNSAT", total_time))
 
         if sat:
             bound -= 1
@@ -614,7 +615,7 @@ def print_results(results, input_name, outdir):
     print("\n")
 
 def main(argv):
-    outdir = "./output"
+    outdir = None
     solver = Solver.GLUCOSE_SYRUP
     time_limit = 3600
     debug = False
@@ -674,5 +675,5 @@ def main(argv):
     
     return
 
-# main(["pipeline.py", "test1", "-d", "-b", "1"])
+# main(["pipeline.py", "husonjoint", "-b", "4", "-n", "13"])
 main(sys.argv)

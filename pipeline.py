@@ -679,5 +679,5 @@ def main(argv):
     
     return
 
-main(["pipeline.py", "husonjoint", "-d", "-b", "4", "-n", "14"])
-# main(sys.argv)
+# main(["pipeline.py", "husonjoint", "-d", "-b", "4", "-n", "14"])
+main(sys.argv)

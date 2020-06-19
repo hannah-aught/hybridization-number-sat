@@ -516,7 +516,7 @@ def get_num_clauses(conditions):
 
     return num_clauses
 
-def call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, start_t_var):
+def call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, num_rows, num_cols, start_t_var):
 
     start_time = time.time()
     #result = subprocess.run([solver_path, "-nthreads=12", cnf_file_path], capture_output=True)
@@ -530,15 +530,19 @@ def call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, star
 
     total_time = end_time - start_time
     sat = " SATISFIABLE" in str(result.stdout)
-    used_internal_nodes = 0
+    used_internal_nodes = {x: 0 for x in range(1, num_internal_nodes + 1)}
     text = result.stdout.decode("utf-8")
+    total_nodes = 1 + num_internal_nodes + num_rows
+    final_t_var = start_t_var + num_cols * total_nodes - 1
 
-    for t_var in range(start_t_var + 1, start_t_var + num_internal_nodes):
+    for t_var in range(start_t_var + 1, final_t_var + 1):
+        if (t_var - start_t_var) % total_nodes == 0 or (t_var - start_t_var) % total_nodes > num_internal_nodes:
+            continue
         pattern = re.compile("-" + str(t_var) + r"\s+")
         if re.search(pattern, text) == None:
-            used_internal_nodes += 1
+            used_internal_nodes[(t_var - start_t_var) % total_nodes] = 1
 
-    return total_time, used_internal_nodes, sat
+    return total_time, sum(used_internal_nodes.values()), sat
 
 def gen_conditions(num_rows, num_cols, mat, num_internal_nodes, num_edges, bound, debug):
     tree_conditions, final_node_var, final_edge_var = gen_tree_conditions(num_rows, num_cols, num_internal_nodes, debug)
@@ -566,7 +570,7 @@ def minimize_sat(num_rows, num_cols, num_internal_nodes, initial_bound, input_ma
         num_clauses = get_num_clauses(conditions)
         write_cnf_file(conditions, final_var, num_clauses, cnf_file_path)
         start_t_var = num_rows * num_cols * (num_internal_nodes + 2) + 1
-        time, used_internal_nodes, sat = call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, start_t_var)
+        time, used_internal_nodes, sat = call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, num_rows, num_cols, start_t_var)
         runs_required += 1
         total_time += time
         print("bound {}, using {}/{} internal nodes, {}, time so far: {}".format(bound, used_internal_nodes, num_internal_nodes, "SAT" if sat else "UNSAT", total_time))

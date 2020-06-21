@@ -255,9 +255,6 @@ def gen_d_conditions(n, m, num_internal_nodes, total_edges, last_x_var, x_vars, 
     return [d_condition_1, d_condition_2], d_vars[-1]
 
 def gen_tree_conditions(n, m, num_internal_nodes, debug):
-    # Have adjacency mat for edges?
-    # characters = columns
-    # taxa = rows
     total_nodes = 1 + num_internal_nodes + n # root + internal + leaves
     total_edges = num_internal_nodes + (num_internal_nodes*(num_internal_nodes-1))//2 + num_internal_nodes*n
 
@@ -516,7 +513,30 @@ def get_num_clauses(conditions):
 
     return num_clauses
 
-def call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, num_rows, num_cols, start_t_var):
+def save_model(start_d_var, final_d_var, num_rows, num_internal_nodes, vars, model_file):
+    total_nodes = 1 + num_internal_nodes + num_rows
+    adj_mat = np.zeros((total_nodes, total_nodes), dtype="int")
+    d_vars = list(range(start_d_var, final_d_var + 1))
+    
+    for i in range(num_internal_nodes + 1):
+        for j in range(i + 1, total_nodes):
+            if j >= num_internal_nodes and i == 0:
+                continue
+
+            d_var = d_vars[j - i - 1]
+            pattern = re.compile("-" + str(d_var) + r'\s+')
+
+            if re.search(pattern, vars) == None:
+                adj_mat[i,j] = 1
+        
+        if i == 0:
+            d_vars = d_vars[num_internal_nodes:]
+        else:
+            d_vars = d_vars[total_nodes - i - 1:]
+
+    np.savetxt(model_file, adj_mat, delimiter=",", fmt="%d")
+
+def call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, num_rows, num_cols, num_edges, start_t_var, start_d_var, model_path):
 
     start_time = time.time()
     #result = subprocess.run([solver_path, "-nthreads=12", cnf_file_path], capture_output=True)
@@ -534,13 +554,20 @@ def call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, num_
     text = result.stdout.decode("utf-8")
     total_nodes = 1 + num_internal_nodes + num_rows
     final_t_var = start_t_var + num_cols * total_nodes - 1
+    final_d_var = start_d_var + num_edges - 1
 
-    for t_var in range(start_t_var + 1, final_t_var + 1):
-        if (t_var - start_t_var) % total_nodes == 0 or (t_var - start_t_var) % total_nodes > num_internal_nodes:
-            continue
-        pattern = re.compile("-" + str(t_var) + r"[\\n\s+]")
-        if re.search(pattern, text) == None:
-            used_internal_nodes[(t_var - start_t_var) % total_nodes] = 1
+    if model_path != None and sat:
+        save_model(start_d_var, final_d_var, num_rows, num_internal_nodes, text, model_path)
+
+    if sat:
+        for t_var in range(start_t_var + 1, final_t_var + 1):
+            if (t_var - start_t_var) % total_nodes == 0 or (t_var - start_t_var) % total_nodes > num_internal_nodes:
+                continue
+
+            pattern = re.compile("-" + str(t_var) + r"[\\n\s+]")
+
+            if re.search(pattern, text) == None:
+                used_internal_nodes[(t_var - start_t_var) % total_nodes] = 1
 
     return total_time, sum(used_internal_nodes.values()), sat
 
@@ -551,9 +578,9 @@ def gen_conditions(num_rows, num_cols, mat, num_internal_nodes, num_edges, bound
     counting_conditions, final_c_var = gen_counting_conditions(num_rows, num_cols, num_internal_nodes, bound, final_r_var, debug)
     conditions = tree_conditions + subtree_conditions + reticulation_conditions + counting_conditions
     
-    return conditions, final_c_var
+    return conditions, final_edge_var, final_c_var
 
-def minimize_sat(num_rows, num_cols, num_internal_nodes, initial_bound, input_mat, solver, cnf_file_path, time_limit, debug):
+def minimize_sat(num_rows, num_cols, num_internal_nodes, initial_bound, input_mat, solver, cnf_file_path, time_limit, debug, save_path):
     total_time = 0
     runs_required = 0
     sat = True
@@ -565,15 +592,23 @@ def minimize_sat(num_rows, num_cols, num_internal_nodes, initial_bound, input_ma
         solver_path = "./lingeling/plingeling"
 
     while sat and bound >= 0 and bound <= initial_bound:
+        if save_path != None:
+            save_file = save_path + "_" + str(bound) + ".model"
+        else:
+            save_file = save_path
+
         num_edges = (num_internal_nodes) + num_rows * (num_internal_nodes) + (num_internal_nodes)*(num_internal_nodes-1)//2
-        conditions, final_var = gen_conditions(num_rows, num_cols, input_mat, num_internal_nodes, num_edges, bound, debug)
+        conditions, final_d_var, final_var = gen_conditions(num_rows, num_cols, input_mat, num_internal_nodes, num_edges, bound, debug)
         num_clauses = get_num_clauses(conditions)
         write_cnf_file(conditions, final_var, num_clauses, cnf_file_path)
         start_t_var = num_rows * num_cols * (num_internal_nodes + 2) + 1
-        time, used_internal_nodes, sat = call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, num_rows, num_cols, start_t_var)
+        time, used_internal_nodes, sat = call_solver(solver_path, cnf_file_path, time_limit, num_internal_nodes, num_rows, num_cols, num_edges, start_t_var, final_d_var - num_edges + 1, save_file)
         runs_required += 1
         total_time += time
         print("bound {}, using {}/{} internal nodes, {}, time so far: {}".format(bound, used_internal_nodes, num_internal_nodes, "SAT" if sat else "UNSAT", total_time))
+
+        if sat and save_file != None:
+            print("\tAdjacency matrix written to: {}\n".format(save_file))
 
         if sat:
             bound -= 1
@@ -623,6 +658,7 @@ def main(argv):
     solver = Solver.GLUCOSE_SYRUP
     time_limit = 3600
     debug = False
+    save_path = None
 
     if len(argv) < 2 or "-h" in argv or "--help" in argv:
         print("\nError: Usage\n\tpython3 pipeline.py [input file] <options>")
@@ -632,7 +668,8 @@ def main(argv):
         print("\t-o\tDirectory the output should go to. If not specified, \n\t\toutput is printed to stdout.\n")
         print("\t-t\tTime limit in seconds for each SAT solver run. \n\t\tDefault is 3600.\n")
         print("\t-n\tNumber of internal nodes to build the initial graph with. \n\t\tDefault is n + m where n = number of rows, \n\t\tm = number of cols.\n")
-        print("\t-b\tInitial upper bound. Default is n + m where \n\t\tn = number of rows, m = number of cols.\n")
+        print("\t-b\tInitial upper bound. Default is n + m where \n\t\tn = number of rows, m = number of cols.")
+        print("\t-s\tSave the graphs created at each step. Adjacency matrices will be saved to files in output directory if specifiedthe working directory if not.\n")
 
         return
         
@@ -644,6 +681,11 @@ def main(argv):
         time_limit = int(argv[argv.index("-t") + 1])
     if "-d" in argv:
         debug = True
+    if "-s" in argv and "-o" in argv:
+        save_path = outdir
+    elif "-s" in argv:
+        save_path = "./"
+
 
     input_path = "./input/" + input_file
     input_matrices = parse_input(input_path)
@@ -664,7 +706,10 @@ def main(argv):
 
         input_name = input_file + "_" + str(i)
 
-        sat_results = minimize_sat(n, m, num_internal_nodes, bound, mat, solver, input_name + ".cnf", time_limit, debug)
+        if save_path != None:
+            save_path += input_name
+
+        sat_results = minimize_sat(n, m, num_internal_nodes, bound, mat, solver, input_name + ".cnf", time_limit, debug, save_path)
         with open("./input/temp", "w+") as temp:
             s = ""
             for row in mat:
@@ -679,5 +724,5 @@ def main(argv):
     
     return
 
-# main(["pipeline.py", "husonjoint", "-d", "-b", "4", "-n", "14"])
+# main(["pipeline.py", "test1", "-s"])
 main(sys.argv)

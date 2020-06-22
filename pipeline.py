@@ -14,12 +14,22 @@ class Solver(Enum):
 
 def parse_input(path):
     with open(path, "r") as f:
-        lines = np.asarray(f.readlines())
-        start_indices = np.asarray([i for i, line in enumerate(lines) if "//" in line] + [len(lines) + 1])
+        lines = f.readlines()
+        start_indices = [i + 3 for i, line in enumerate(lines) if "//" in line] + [len(lines) + 4]
         mats = list()
 
-        for i, j in enumerate(start_indices[:-1] + 3):
-            mat = np.asarray([list(line.rstrip()) for line in lines[j:(start_indices[i+1] - 1)]], dtype='float64')
+        if len(start_indices) == 1:
+            ms = False
+            start_indices = [i for i, line in enumerate(lines) if ("0" in line or "1" in line) and (i == 0 or lines[i-1] == "\n")] + [len(lines) + 1]
+        else:
+            ms = True
+
+        for i, j in enumerate(start_indices[:-1]):
+            if ms:
+                end_index = start_indices[i+1] - 4
+            else:
+                end_index = start_indices[i+1] - 1
+            mat = np.asarray([list(line.rstrip()) for line in lines[j:end_index]], dtype='float64')
             mat = mat[:, ~np.all(mat == 0, axis = 0)]
             mats.append(mat)
 
@@ -681,10 +691,6 @@ def main(argv):
         time_limit = int(argv[argv.index("-t") + 1])
     if "-d" in argv:
         debug = True
-    if "-s" in argv and "-o" in argv:
-        save_path = outdir
-    elif "-s" in argv:
-        save_path = "./"
 
 
     input_path = "./input/" + input_file
@@ -695,6 +701,10 @@ def main(argv):
         n = mat.shape[0]
         m = mat.shape[1]
 
+        if "-s" in argv and "-o" in argv:
+            save_path = outdir
+        elif "-s" in argv:
+            save_path = "./"
         if "-n" in argv:
             num_internal_nodes = int(argv[argv.index("-n") + 1])
         else:
@@ -710,13 +720,6 @@ def main(argv):
             save_path += input_name
 
         sat_results = minimize_sat(n, m, num_internal_nodes, bound, mat, solver, input_name + ".cnf", time_limit, debug, save_path)
-        with open("./input/temp", "w+") as temp:
-            s = ""
-            for row in mat:
-                for entry in row:
-                    s += str(int(entry))
-                s += "\n"
-            temp.write(s)
 
         print_results([sat_results], input_name, outdir)
 
@@ -724,5 +727,5 @@ def main(argv):
     
     return
 
-# main(["pipeline.py", "test1", "-s"])
+# main(["pipeline.py", "test5x5p", "-s"])
 main(sys.argv)
